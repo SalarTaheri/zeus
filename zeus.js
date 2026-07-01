@@ -422,14 +422,21 @@ const Router = {
 					);
 				}
 				if (request.method === "POST") {
-					const { username, limit_gb, expiry_days, limit_req, ips, tls, port, fingerprint, max_connections } = await request.json();
+					const { username, uuid, limit_gb, expiry_days, limit_req, ips, tls, port, fingerprint, max_connections, used_gb, used_req, created_at, is_active } = await request.json();
 					if (!username) {
 						return new Response(JSON.stringify({ error: "نام کاربری اجباری است" }), { status: 400, headers: { "Content-Type": "application/json" } });
 					}
-					const uuid = crypto.randomUUID();
+					const finalUuid = uuid || crypto.randomUUID();
+					const parsedUsedGb = parseFloat(used_gb);
+					const finalUsedGb = !isNaN(parsedUsedGb) ? parsedUsedGb : 0;
+					const parsedUsedReq = parseInt(used_req);
+					const finalUsedReq = !isNaN(parsedUsedReq) ? parsedUsedReq : 0;
+					const finalCreatedAt = created_at || new Date().toISOString();
+					const parsedIsActive = parseInt(is_active);
+					const finalIsActive = !isNaN(parsedIsActive) ? parsedIsActive : 1;
 					try {
-						await env.DB.prepare("INSERT INTO users (username, uuid, limit_gb, expiry_days, limit_req, ips, connection_type, tls, port, fingerprint, max_connections) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
-							.bind(username, uuid, limit_gb ? parseFloat(limit_gb) : null, expiry_days ? parseInt(expiry_days) : null, limit_req ? parseInt(limit_req) : null, ips || null, atob("dmxlc3M="), tls, port, fingerprint || "chrome", max_connections ? parseInt(max_connections) : null)
+						await env.DB.prepare("INSERT INTO users (username, uuid, limit_gb, expiry_days, limit_req, ips, connection_type, tls, port, fingerprint, max_connections, used_gb, used_req, created_at, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+							.bind(username, finalUuid, limit_gb ? parseFloat(limit_gb) : null, expiry_days ? parseInt(expiry_days) : null, limit_req ? parseInt(limit_req) : null, ips || null, atob("dmxlc3M="), tls, port, fingerprint || "chrome", max_connections ? parseInt(max_connections) : null, finalUsedGb, finalUsedReq, finalCreatedAt, finalIsActive)
 							.run();
 						return new Response(JSON.stringify({ success: true }), { headers: { "Content-Type": "application/json" } });
 					} catch (err) {
@@ -1909,7 +1916,7 @@ const HTML_TEMPLATES = {
             </div>
         </div>
     </header>
-    <main class="max-w-6xl mx-auto px-4 py-8">
+    <main class="max-w-6xl mx-auto px-4 py-8 pb-32">
 <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-5 mb-8">
     <div class="bg-white dark:bg-amoled-card border border-gray-200 dark:border-amoled-border rounded-2xl p-5 shadow-sm flex flex-col justify-between hover:shadow-md hover:border-indigo-400 dark:hover:border-indigo-500/50 transition duration-300 relative overflow-hidden group">
         <div class="absolute -right-4 -bottom-4 w-24 h-24 bg-indigo-500/10 rounded-full blur-xl group-hover:scale-150 transition duration-500"></div>
@@ -2038,6 +2045,7 @@ const HTML_TEMPLATES = {
             <table class="w-full text-right border-collapse">
                 <thead>
                     <tr class="bg-gray-100 dark:bg-zinc-900/50 border-b border-gray-200 dark:border-amoled-border text-xs text-gray-500 dark:text-gray-400 text-center">
+                        <th class="p-2 w-10 text-center"><input type="checkbox" id="select-all-users" onchange="toggleSelectAllUsers(this)" class="rounded border-gray-300 dark:border-zinc-700 text-blue-600 focus:ring-blue-500 cursor-pointer"></th>
                         <th class="p-4">نام کاربر و عملیات</th>
                         <th class="p-2 border-r border-gray-200 dark:border-zinc-800">لینک ساب</th>
                         <th class="p-2 border-r border-gray-200 dark:border-zinc-800">پروتکل</th>
@@ -2280,6 +2288,19 @@ const HTML_TEMPLATES = {
                         <button type="button" onclick="changeAdminPassword()" id="change-pwd-btn" class="w-full py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold rounded-lg text-xs transition-all shadow-sm">تغییر رمز عبور</button>
                     </div>
                 </div>
+                <!-- Backup & Restore Section -->
+                <div class="pt-4 border-t border-gray-100 dark:border-zinc-800">
+                    <h4 class="text-sm font-bold mb-3 text-gray-800 dark:text-zinc-200">💾 پشتیبان‌گیری و بازیابی</h4>
+                    <div class="grid grid-cols-2 gap-3">
+                        <button type="button" onclick="exportUsersBackup()" class="py-2.5 bg-indigo-50 dark:bg-indigo-950/20 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/30 border border-indigo-200 dark:border-indigo-900/50 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-sm">
+                            📤 دانلود بک‌آپ
+                        </button>
+                        <button type="button" onclick="triggerImportBackup()" class="py-2.5 bg-emerald-50 dark:bg-emerald-950/20 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-900/30 border border-emerald-200 dark:border-emerald-900/50 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-sm">
+                            📥 بارگذاری بک‌آپ
+                        </button>
+                    </div>
+                    <input type="file" id="backup-file-input" onchange="importUsersBackup(event)" accept=".json" class="hidden">
+                </div>
                 <div class="pt-4 flex gap-3">
                     <button type="button" onclick="toggleSettingsModal(false)" class="flex-1 py-2 bg-gray-100 hover:bg-gray-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 font-medium rounded-lg text-sm transition">انصراف</button>
                     <button type="button" onclick="saveSettings()" id="save-settings-btn" class="flex-1 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg text-sm transition">ذخیره تنظیمات</button>
@@ -2322,7 +2343,418 @@ const HTML_TEMPLATES = {
             </button>
         </div>
     </div>
+
+    <!-- Floating Bulk Actions Bar -->
+    <div id="bulk-actions-bar" class="fixed bottom-4 left-1/2 -translate-x-1/2 z-[40] bg-white dark:bg-zinc-900/90 border border-gray-200 dark:border-zinc-800/80 px-6 py-4 rounded-2xl shadow-2xl flex flex-wrap items-center justify-between gap-4 w-[95%] max-w-4xl transition-all duration-300 transform translate-y-28 opacity-0 pointer-events-none backdrop-blur-md">
+        <div class="flex items-center gap-2">
+            <span class="w-3 h-3 bg-blue-500 rounded-full animate-pulse shadow-sm shadow-blue-500/50"></span>
+            <span id="bulk-selected-count" class="text-sm font-bold text-gray-800 dark:text-zinc-200">۰ کاربر انتخاب شده</span>
+        </div>
+        <div class="flex flex-wrap gap-2 justify-end">
+            <button onclick="bulkEdit()" class="px-3 py-1.5 bg-yellow-50 dark:bg-yellow-950/20 text-yellow-600 dark:text-yellow-400 hover:bg-yellow-100 dark:hover:bg-yellow-900/30 rounded-xl text-xs font-bold transition border border-yellow-200 dark:border-yellow-900/50 flex items-center gap-1">
+                ✏️ ویرایش گروهی
+            </button>
+            <button onclick="bulkToggleStatus(1)" class="px-3 py-1.5 bg-emerald-50 dark:bg-emerald-950/20 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-900/30 rounded-xl text-xs font-bold transition border border-emerald-200 dark:border-emerald-900/50 flex items-center gap-1">
+                ✅ فعال‌سازی
+            </button>
+            <button onclick="bulkToggleStatus(0)" class="px-3 py-1.5 bg-amber-50 dark:bg-amber-950/20 text-amber-600 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/30 rounded-xl text-xs font-bold transition border border-amber-200 dark:border-amber-900/50 flex items-center gap-1">
+                ❌ غیرفعال‌سازی
+            </button>
+            <button onclick="bulkReset('volume')" class="px-3 py-1.5 bg-blue-50 dark:bg-blue-950/20 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/30 rounded-xl text-xs font-bold transition border border-blue-200 dark:border-blue-900/50 flex items-center gap-1">
+                📊 ریست حجم
+            </button>
+            <button onclick="bulkReset('req')" class="px-3 py-1.5 bg-sky-50 dark:bg-sky-950/20 text-sky-600 dark:text-sky-400 hover:bg-sky-100 dark:hover:bg-sky-900/30 rounded-xl text-xs font-bold transition border border-sky-200 dark:border-sky-900/50 flex items-center gap-1">
+                ⚡ ریست ریکوئست
+            </button>
+            <button onclick="bulkReset('time')" class="px-3 py-1.5 bg-purple-50 dark:bg-purple-950/20 text-purple-600 dark:text-purple-400 hover:bg-purple-100 dark:hover:bg-purple-900/30 rounded-xl text-xs font-bold transition border border-purple-200 dark:border-purple-900/50 flex items-center gap-1">
+                ⏳ ریست زمان
+            </button>
+            <button onclick="bulkDelete()" class="px-3 py-1.5 bg-red-50 dark:bg-red-950/30 text-red-600 dark:text-red-450 hover:bg-red-100 dark:hover:bg-red-900/40 rounded-xl text-xs font-bold transition border border-red-200 dark:border-red-900/50 flex items-center gap-1">
+                🗑️ حذف گروهی
+            </button>
+        </div>
+    </div>
+
+    <!-- Bulk Edit Modal -->
+    <div id="bulk-edit-modal" class="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-black/70 opacity-0 pointer-events-none transition-opacity duration-200 ease-out">
+        <div id="bulk-edit-modal-card" class="w-full max-w-xl bg-white dark:bg-zinc-950 border border-gray-200 dark:border-zinc-800 rounded-2xl shadow-xl overflow-hidden transition-[opacity,transform] duration-200 opacity-0 scale-95 ease-out flex flex-col max-h-[90vh] transform-gpu" style="will-change: transform, opacity;">
+            <div class="px-6 py-4 border-b border-gray-150 dark:border-zinc-800/80 flex justify-between items-center bg-gray-50/50 dark:bg-zinc-900/30">
+                <div class="flex items-center gap-2">
+                    <div class="w-2.5 h-2.5 rounded-full bg-yellow-500"></div>
+                    <h3 class="font-bold text-gray-900 dark:text-zinc-100 text-base">ویرایش گروهی کاربران</h3>
+                </div>
+                <button onclick="toggleBulkEditModal(false)" class="p-1 rounded-lg hover:bg-gray-150 dark:hover:bg-zinc-800/60 text-gray-400 hover:text-gray-650 dark:hover:text-zinc-200 transition">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                </button>
+            </div>
+            <form id="bulk-edit-form" class="p-6 space-y-5 overflow-y-auto flex-1 overscroll-contain" style="-webkit-overflow-scrolling: touch; transform: translate3d(0,0,0); will-change: scroll-position, transform;" onsubmit="handleBulkEditSubmit(event)">
+                <p class="text-xs text-amber-600 dark:text-amber-400 font-semibold mb-2">💡 تغییرات فقط روی بخش‌هایی اعمال می‌شوند که دکمه فعال‌ساز تغییر (چپ) آن‌ها روشن باشد.</p>
+                <div class="space-y-4">
+                    <!-- Limit GB -->
+                    <div class="flex items-center gap-3 border border-gray-100 dark:border-zinc-900 p-3 rounded-xl bg-gray-50/20 dark:bg-zinc-900/10">
+                        <label class="relative inline-flex items-center cursor-pointer select-none">
+                            <input type="checkbox" id="bulk-apply-limit" class="sr-only peer">
+                            <div class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-zinc-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+                        </label>
+                        <div class="flex-1">
+                            <label class="block text-xs font-bold text-gray-500 dark:text-zinc-400 mb-1 uppercase tracking-wider">حجم (GB)</label>
+                            <input type="number" id="bulk-input-limit" min="0" step="any" placeholder="بدون تغییر" class="w-full px-3 py-2 bg-gray-50 dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-sm font-semibold text-gray-800 dark:text-zinc-100 placeholder-gray-400/80 transition">
+                        </div>
+                    </div>
+                    <!-- Expiry Days -->
+                    <div class="flex items-center gap-3 border border-gray-100 dark:border-zinc-900 p-3 rounded-xl bg-gray-50/20 dark:bg-zinc-900/10">
+                        <label class="relative inline-flex items-center cursor-pointer select-none">
+                            <input type="checkbox" id="bulk-apply-expiry" class="sr-only peer">
+                            <div class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-zinc-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+                        </label>
+                        <div class="flex-1">
+                            <label class="block text-xs font-bold text-gray-500 dark:text-zinc-400 mb-1 uppercase tracking-wider">اعتبار (روز)</label>
+                            <input type="number" id="bulk-input-expiry" min="0" placeholder="بدون تغییر" class="w-full px-3 py-2 bg-gray-50 dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-sm font-semibold text-gray-800 dark:text-zinc-100 placeholder-gray-400/80 transition">
+                        </div>
+                    </div>
+                    <!-- Req Limit -->
+                    <div class="flex items-center gap-3 border border-gray-100 dark:border-zinc-900 p-3 rounded-xl bg-gray-50/20 dark:bg-zinc-900/10">
+                        <label class="relative inline-flex items-center cursor-pointer select-none">
+                            <input type="checkbox" id="bulk-apply-req-limit" class="sr-only peer">
+                            <div class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-zinc-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+                        </label>
+                        <div class="flex-1">
+                            <label class="block text-xs font-bold text-gray-500 dark:text-zinc-400 mb-1 uppercase tracking-wider">سقف ریکوئست</label>
+                            <input type="number" id="bulk-input-req-limit" min="0" placeholder="بدون تغییر" class="w-full px-3 py-2 bg-gray-50 dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-sm font-semibold text-gray-800 dark:text-zinc-100 placeholder-gray-400/80 transition">
+                        </div>
+                    </div>
+                    <!-- Max Connections -->
+                    <div class="flex items-center gap-3 border border-gray-100 dark:border-zinc-900 p-3 rounded-xl bg-gray-50/20 dark:bg-zinc-900/10">
+                        <label class="relative inline-flex items-center cursor-pointer select-none">
+                            <input type="checkbox" id="bulk-apply-max-connections" class="sr-only peer">
+                            <div class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-zinc-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+                        </label>
+                        <div class="flex-1">
+                            <label class="block text-xs font-bold text-gray-500 dark:text-zinc-400 mb-1 uppercase tracking-wider">کاربر همزمان</label>
+                            <input type="number" id="bulk-input-max-connections" min="0" placeholder="بدون تغییر" class="w-full px-3 py-2 bg-gray-50 dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-sm font-semibold text-gray-800 dark:text-zinc-100 placeholder-gray-400/80 transition">
+                        </div>
+                    </div>
+                    <!-- Fingerprint -->
+                    <div class="flex items-center gap-3 border border-gray-100 dark:border-zinc-900 p-3 rounded-xl bg-gray-50/20 dark:bg-zinc-900/10">
+                        <label class="relative inline-flex items-center cursor-pointer select-none">
+                            <input type="checkbox" id="bulk-apply-fingerprint" class="sr-only peer">
+                            <div class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-zinc-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+                        </label>
+                        <div class="flex-1">
+                            <label class="block text-xs font-bold text-gray-500 dark:text-zinc-400 mb-1.5 uppercase tracking-wider">Fingerprint</label>
+                            <select id="bulk-fingerprint-select" class="w-full px-3 py-2.5 bg-gray-50 dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-xs font-semibold text-gray-700 dark:text-zinc-300 cursor-pointer">
+                                <option value="chrome">🌐 Chrome</option>
+                                <option value="firefox">🦊 Firefox</option>
+                                <option value="safari">🧭 Safari</option>
+                                <option value="ios">📱 iOS Device</option>
+                                <option value="android">🤖 Android Device</option>
+                                <option value="edge">🌀 Microsoft Edge</option>
+                                <option value="360">🔒 360 Browser</option>
+                                <option value="qq">💬 QQ Browser</option>
+                                <option value="random">🎲 Random (اتفاقی)</option>
+                                <option value="randomized">🎭 Randomized (پویا)</option>
+                            </select>
+                        </div>
+                    </div>
+                    <!-- Ports -->
+                    <div class="flex items-center gap-3 border border-gray-100 dark:border-zinc-900 p-3 rounded-xl bg-gray-50/20 dark:bg-zinc-900/10">
+                        <label class="relative inline-flex items-center cursor-pointer select-none">
+                            <input type="checkbox" id="bulk-apply-ports" class="sr-only peer">
+                            <div class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-zinc-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+                        </label>
+                        <div class="flex-1 space-y-2">
+                            <label class="block text-xs font-bold text-gray-500 dark:text-zinc-400 uppercase tracking-wider">پورت‌های اتصال (TLS و غیر TLS)</label>
+                            <div class="grid grid-cols-4 gap-2">
+                                <label class="flex items-center gap-1 text-[11px] text-gray-700 dark:text-zinc-300 cursor-pointer"><input type="checkbox" name="bulk-ports" value="443" class="rounded border-gray-300 dark:border-zinc-800 text-blue-600 focus:ring-blue-500"> 443</label>
+                                <label class="flex items-center gap-1 text-[11px] text-gray-700 dark:text-zinc-300 cursor-pointer"><input type="checkbox" name="bulk-ports" value="80" class="rounded border-gray-300 dark:border-zinc-800 text-blue-600 focus:ring-blue-500"> 80</label>
+                                <label class="flex items-center gap-1 text-[11px] text-gray-700 dark:text-zinc-300 cursor-pointer"><input type="checkbox" name="bulk-ports" value="2053" class="rounded border-gray-300 dark:border-zinc-800 text-blue-600 focus:ring-blue-500"> 2053</label>
+                                <label class="flex items-center gap-1 text-[11px] text-gray-700 dark:text-zinc-300 cursor-pointer"><input type="checkbox" name="bulk-ports" value="2083" class="rounded border-gray-300 dark:border-zinc-800 text-blue-600 focus:ring-blue-500"> 2083</label>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Clean IPs -->
+                    <div class="flex items-center gap-3 border border-gray-100 dark:border-zinc-900 p-3 rounded-xl bg-gray-50/20 dark:bg-zinc-900/10">
+                        <label class="relative inline-flex items-center cursor-pointer select-none">
+                            <input type="checkbox" id="bulk-apply-ips" class="sr-only peer">
+                            <div class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-zinc-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+                        </label>
+                        <div class="flex-1">
+                            <label class="block text-xs font-bold text-gray-500 dark:text-zinc-400 mb-1 uppercase tracking-wider">آیپی تمیز کلودفلر (اختیاری)</label>
+                            <textarea id="bulk-input-ips" rows="2" placeholder="104.16.0.1" class="w-full px-3 py-2 bg-gray-50 dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 text-xs font-mono text-gray-800 dark:text-zinc-100 placeholder-gray-400/80 transition resize-none"></textarea>
+                        </div>
+                    </div>
+                </div>
+                <div class="pt-4 flex gap-3">
+                    <button type="button" onclick="toggleBulkEditModal(false)" class="flex-1 py-3 bg-gray-100 hover:bg-gray-200 dark:bg-zinc-800 dark:hover:bg-zinc-700/80 text-gray-700 dark:text-zinc-300 font-bold rounded-xl text-sm transition duration-200">انصراف</button>
+                    <button type="submit" id="bulk-submit-btn" class="flex-1 py-3 bg-gradient-to-r from-yellow-600 to-amber-600 hover:from-yellow-700 hover:to-amber-700 text-white font-bold rounded-xl text-sm transition duration-200 shadow-md shadow-yellow-500/10">ثبت تغییرات گروهی</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <script>
+        window.selectedUsernames = new Set();
+
+        function toggleSelectAllUsers(el) {
+            const checkboxes = document.querySelectorAll('input[name="select-user"]');
+            checkboxes.forEach(cb => {
+                cb.checked = el.checked;
+                const username = decodeURIComponent(cb.value);
+                if (el.checked) {
+                    window.selectedUsernames.add(username);
+                } else {
+                    window.selectedUsernames.delete(username);
+                }
+            });
+            updateBulkActionsBar();
+        }
+
+        function onUserSelectChange(el) {
+            const username = decodeURIComponent(el.value);
+            if (el.checked) {
+                window.selectedUsernames.add(username);
+            } else {
+                window.selectedUsernames.delete(username);
+            }
+            updateBulkActionsBar();
+        }
+
+        function updateBulkActionsBar() {
+            const bar = document.getElementById('bulk-actions-bar');
+            const countSpan = document.getElementById('bulk-selected-count');
+            const selectAllCheckbox = document.getElementById('select-all-users');
+            const selectedCount = window.selectedUsernames.size;
+            
+            if (countSpan) {
+                countSpan.innerText = selectedCount + ' کاربر انتخاب شده';
+            }
+            
+            const checkboxes = document.querySelectorAll('input[name="select-user"]');
+            if (checkboxes.length > 0) {
+                const allChecked = Array.from(checkboxes).every(cb => cb.checked);
+                if (selectAllCheckbox) selectAllCheckbox.checked = allChecked;
+            } else {
+                if (selectAllCheckbox) selectAllCheckbox.checked = false;
+            }
+
+            if (selectedCount > 0) {
+                bar.classList.remove('opacity-0', 'pointer-events-none', 'translate-y-28');
+                bar.classList.add('opacity-100', 'pointer-events-auto', 'translate-y-0');
+            } else {
+                bar.classList.remove('opacity-100', 'pointer-events-auto', 'translate-y-0');
+                bar.classList.add('opacity-0', 'pointer-events-none', 'translate-y-28');
+            }
+        }
+
+        async function bulkDelete() {
+            const usernames = Array.from(window.selectedUsernames);
+            if (usernames.length === 0) return;
+            if (confirm('⚠️ آیا از حذف گروهی ' + usernames.length + ' کاربر انتخاب شده مطمئن هستید؟ این عمل غیرقابل بازگشت است.')) {
+                const bar = document.getElementById('bulk-actions-bar');
+                const buttons = bar.querySelectorAll('button');
+                buttons.forEach(btn => btn.disabled = true);
+                
+                try {
+                    let successCount = 0;
+                    await Promise.all(usernames.map(async (uname) => {
+                        try {
+                            const res = await fetch('/api/users/' + encodeURIComponent(uname), { method: 'DELETE' });
+                            if (res.ok) {
+                                successCount++;
+                                window.selectedUsernames.delete(uname);
+                            }
+                        } catch(e) {}
+                    }));
+                    alert('✅ عملیات حذف گروهی انجام شد. ' + successCount + ' کاربر با موفقیت حذف شدند.');
+                } finally {
+                    buttons.forEach(btn => btn.disabled = false);
+                    updateBulkActionsBar();
+                    await loadUsers(true);
+                }
+            }
+        }
+
+        async function bulkToggleStatus(targetActive) {
+            const usernames = Array.from(window.selectedUsernames);
+            if (usernames.length === 0) return;
+            const actionText = targetActive === 1 ? 'فعال‌سازی' : 'غیرفعال‌سازی';
+            if (confirm('آیا از ' + actionText + ' گروهی ' + usernames.length + ' کاربر انتخاب شده مطمئن هستید؟')) {
+                const bar = document.getElementById('bulk-actions-bar');
+                const buttons = bar.querySelectorAll('button');
+                buttons.forEach(btn => btn.disabled = true);
+                
+                try {
+                    let successCount = 0;
+                    await Promise.all(usernames.map(async (uname) => {
+                        const user = window.allUsers.find(u => u.username === uname);
+                        if (!user) return;
+                        const isCurrentActive = user.is_active !== 0;
+                        const shouldToggle = (targetActive === 1 && !isCurrentActive) || (targetActive === 0 && isCurrentActive);
+                        
+                        if (shouldToggle) {
+                            try {
+                                const res = await fetch('/api/users/' + encodeURIComponent(uname), {
+                                    method: 'PUT',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ toggle_only: true })
+                                });
+                                if (res.ok) successCount++;
+                            } catch(e) {}
+                        } else {
+                            successCount++;
+                        }
+                    }));
+                    alert('✅ عملیات ' + actionText + ' با موفقیت برای تمامی کاربران واجد شرایط اعمال شد.');
+                } finally {
+                    buttons.forEach(btn => btn.disabled = false);
+                    updateBulkActionsBar();
+                    await loadUsers(true);
+                }
+            }
+        }
+
+        async function bulkReset(actionType) {
+            const usernames = Array.from(window.selectedUsernames);
+            if (usernames.length === 0) return;
+            let actionName = '';
+            if (actionType === 'volume') actionName = 'حجم مصرفی';
+            else if (actionType === 'req') actionName = 'تعداد ریکوئست‌ها';
+            else if (actionType === 'time') actionName = 'زمان اشتراک';
+            
+            if (confirm('آیا از ریست کردن گروهی ' + actionName + ' برای ' + usernames.length + ' کاربر انتخاب شده مطمئن هستید؟')) {
+                const bar = document.getElementById('bulk-actions-bar');
+                const buttons = bar.querySelectorAll('button');
+                buttons.forEach(btn => btn.disabled = true);
+                
+                try {
+                    let successCount = 0;
+                    await Promise.all(usernames.map(async (uname) => {
+                        try {
+                            const res = await fetch('/api/users/' + encodeURIComponent(uname), {
+                                method: 'PUT',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ reset_action: actionType })
+                            });
+                            if (res.ok) successCount++;
+                        } catch(e) {}
+                    }));
+                    alert('✅ عملیات ریست گروهی ' + actionName + ' با موفقیت برای ' + successCount + ' کاربر اعمال شد.');
+                } finally {
+                    buttons.forEach(btn => btn.disabled = false);
+                    updateBulkActionsBar();
+                    await loadUsers(true);
+                }
+            }
+        }
+
+        function toggleBulkEditModal(show) {
+            const modal = document.getElementById('bulk-edit-modal');
+            const card = document.getElementById('bulk-edit-modal-card');
+            if (show) {
+                modal.classList.remove('opacity-0', 'pointer-events-none');
+                modal.classList.add('opacity-100', 'pointer-events-auto');
+                card.classList.remove('opacity-0', 'scale-95');
+                card.classList.add('opacity-100', 'scale-100');
+            } else {
+                modal.classList.remove('opacity-100', 'pointer-events-auto');
+                modal.classList.add('opacity-0', 'pointer-events-none');
+                card.classList.remove('opacity-100', 'scale-100');
+                card.classList.add('opacity-0', 'scale-95');
+                document.getElementById('bulk-edit-form').reset();
+            }
+        }
+
+        function bulkEdit() {
+            toggleBulkEditModal(true);
+        }
+
+        async function handleBulkEditSubmit(event) {
+            event.preventDefault();
+            const submitButton = document.getElementById('bulk-submit-btn');
+            submitButton.disabled = true;
+            submitButton.innerText = 'در حال ثبت تغییرات...';
+            
+            const usernames = Array.from(window.selectedUsernames);
+            
+            const applyLimit = document.getElementById('bulk-apply-limit').checked;
+            const limitValue = document.getElementById('bulk-input-limit').value || null;
+            
+            const applyExpiry = document.getElementById('bulk-apply-expiry').checked;
+            const expiryValue = document.getElementById('bulk-input-expiry').value || null;
+            
+            const applyReqLimit = document.getElementById('bulk-apply-req-limit').checked;
+            const reqLimitValue = document.getElementById('bulk-input-req-limit').value || null;
+            
+            const applyMaxConnections = document.getElementById('bulk-apply-max-connections').checked;
+            const maxConnectionsValue = document.getElementById('bulk-input-max-connections').value || null;
+            
+            const applyFingerprint = document.getElementById('bulk-apply-fingerprint').checked;
+            const fingerprintValue = document.getElementById('bulk-fingerprint-select').value;
+            
+            const applyPorts = document.getElementById('bulk-apply-ports').checked;
+            const checkedPorts = Array.from(document.querySelectorAll('input[name="bulk-ports"]:checked')).map(cb => cb.value);
+            const portsValue = checkedPorts.join(',');
+            const tlsValue = checkedPorts.some(p => tlsPorts.includes(p)) ? 'on' : 'off';
+            
+            const applyIps = document.getElementById('bulk-apply-ips').checked;
+            const ipsValue = document.getElementById('bulk-input-ips').value;
+            
+            if (!applyLimit && !applyExpiry && !applyReqLimit && !applyMaxConnections && !applyFingerprint && !applyPorts && !applyIps) {
+                alert('⚠️ لطفا حداقل یک فیلد را برای اعمال تغییر انتخاب کنید!');
+                submitButton.disabled = false;
+                submitButton.innerText = 'ثبت تغییرات گروهی';
+                return;
+            }
+            
+            try {
+                let successCount = 0;
+                await Promise.all(usernames.map(async (uname) => {
+                    const user = window.allUsers.find(u => u.username === uname);
+                    if (!user) return;
+                    
+                    const limit = applyLimit ? limitValue : user.limit_gb;
+                    const expiry = applyExpiry ? expiryValue : user.expiry_days;
+                    const reqLimit = applyReqLimit ? reqLimitValue : user.limit_req;
+                    const maxConnections = applyMaxConnections ? maxConnectionsValue : user.max_connections;
+                    const fingerprint = applyFingerprint ? fingerprintValue : user.fingerprint;
+                    const port = applyPorts ? portsValue : user.port;
+                    const tls = applyPorts ? tlsValue : user.tls;
+                    const ips = applyIps ? ipsValue : user.ips;
+                    
+                    try {
+                        const response = await fetch('/api/users/' + encodeURIComponent(uname), {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                username: uname,
+                                limit_gb: limit,
+                                expiry_days: expiry,
+                                limit_req: reqLimit,
+                                tls,
+                                port,
+                                ips,
+                                fingerprint,
+                                max_connections: maxConnections
+                            })
+                        });
+                        if (response.ok) {
+                            successCount++;
+                        }
+                    } catch (e) {}
+                }));
+                alert('✅ تغییرات با موفقیت روی ' + successCount + ' کاربر اعمال شد.');
+                toggleBulkEditModal(false);
+                window.selectedUsernames.clear();
+                updateBulkActionsBar();
+                await loadUsers(true);
+            } catch (err) {
+                alert('خطا در انجام تغییرات گروهی');
+            } finally {
+                submitButton.disabled = false;
+                submitButton.innerText = 'ثبت تغییرات گروهی';
+            }
+        }
+
         window.globalFragLen = "20-30";
         window.globalFragInt = "1-2";
         const tlsPorts = ['443', '2053', '2083', '2087', '2096', '8443'];
@@ -2736,7 +3168,11 @@ const HTML_TEMPLATES = {
                     const statusBtnIcon = user.is_active === 0 
                         ? '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>'
                         : '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>';
+                    const isChecked = (window.selectedUsernames && window.selectedUsernames.has(user.username)) ? 'checked' : '';
                     return '<tr class="hover:bg-gray-50 dark:hover:bg-zinc-900/40 border-b border-gray-100 dark:border-zinc-800 last:border-0">' +
+                            '<td class="p-2 border-r border-gray-100 dark:border-zinc-800 text-center select-none">' +
+                                '<input type="checkbox" name="select-user" value="' + encodeURIComponent(user.username) + '" onchange="onUserSelectChange(this)" ' + isChecked + ' class="rounded border-gray-300 dark:border-zinc-700 text-blue-600 focus:ring-blue-500 cursor-pointer">' +
+                            '</td>' +
                             '<td class="p-2 border-r border-gray-100 dark:border-zinc-800 text-center">' +
                                 '<div class="flex flex-col items-center gap-1.5 w-[140px] mx-auto select-none">' +
                                     '<span class="font-bold text-gray-900 dark:text-zinc-100 text-sm truncate max-w-full">' + user.username + '</span>' +
@@ -2786,6 +3222,7 @@ const HTML_TEMPLATES = {
 							'<td class="p-2 border-r border-gray-100 dark:border-zinc-800 text-xs text-gray-500 text-center">' + createdDate + '</td>' +
 							'</tr>';
                 }).join('');
+                updateBulkActionsBar();
             }
         }
 async function resetUserData(encodedUsername, actionType) {
@@ -3111,6 +3548,143 @@ function editUser(encodedUsername) {
                 btn.innerText = 'ذخیره تنظیمات';
             }
         }
+        function exportUsersBackup() {
+            if (!window.allUsers || window.allUsers.length === 0) {
+                alert('⚠️ کاربری برای پشتیبان‌گیری وجود ندارد!');
+                return;
+            }
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(window.allUsers, null, 2));
+            const downloadAnchor = document.createElement('a');
+            const dateStr = new Date().toISOString().split('T')[0];
+            downloadAnchor.setAttribute("href", dataStr);
+            downloadAnchor.setAttribute("download", "zeus_users_backup_" + dateStr + ".json");
+            document.body.appendChild(downloadAnchor);
+            downloadAnchor.click();
+            downloadAnchor.remove();
+        }
+
+        function triggerImportBackup() {
+            document.getElementById('backup-file-input').click();
+        }
+
+        async function importUsersBackup(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            
+            const reader = new FileReader();
+            reader.onload = async function(e) {
+                const importBtn = document.querySelector('button[onclick="triggerImportBackup()"]');
+                const exportBtn = document.querySelector('button[onclick="exportUsersBackup()"]');
+                const closeBtn = document.querySelector('#settings-modal button[onclick="toggleSettingsModal(false)"]');
+                
+                try {
+                    const backupUsers = JSON.parse(e.target.result);
+                    if (!Array.isArray(backupUsers)) {
+                        alert('❌ فایل پشتیبان نامعتبر است! ساختار فایل باید آرایه‌ای از کاربران باشد.');
+                        return;
+                    }
+                    
+                    const validBackupUsers = backupUsers.filter(u => u && typeof u === 'object' && u.username);
+                    if (validBackupUsers.length === 0) {
+                        alert('❌ هیچ کاربر معتبری در فایل پشتیبان یافت نشد!');
+                        return;
+                    }
+                    
+                    const existingUsernames = new Set((window.allUsers || []).map(u => u.username));
+                    const duplicates = validBackupUsers.filter(u => existingUsernames.has(u.username));
+                    
+                    let overwrite = false;
+                    if (duplicates.length > 0) {
+                        overwrite = confirm('⚠️ تعداد ' + duplicates.length + ' کاربر تکراری شناسایی شد. آیا می‌خواهید اطلاعات آن‌ها با فایل پشتیبان بازنویسی شود؟\\n(در صورت انتخاب لغو، کاربران تکراری نادیده گرفته می‌شوند)');
+                    }
+                    
+                    if (importBtn) importBtn.disabled = true;
+                    if (exportBtn) exportBtn.disabled = true;
+                    if (closeBtn) closeBtn.disabled = true;
+                    
+                    let successCount = 0;
+                    let currentStep = 0;
+                    for (const u of validBackupUsers) {
+                        currentStep++;
+                        if (importBtn) {
+                            importBtn.innerText = '⏳ بازیابی (' + currentStep + '/' + validBackupUsers.length + ')';
+                        }
+                        
+                        const exists = existingUsernames.has(u.username);
+                        if (exists) {
+                            if (overwrite) {
+                                try {
+                                    // Delete first
+                                    await fetch('/api/users/' + encodeURIComponent(u.username), { method: 'DELETE' });
+                                    // Post
+                                    const res = await fetch('/api/users', {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({
+                                            username: u.username,
+                                            uuid: u.uuid,
+                                            limit_gb: u.limit_gb,
+                                            expiry_days: u.expiry_days,
+                                            limit_req: u.limit_req,
+                                            ips: u.ips,
+                                            tls: u.tls,
+                                            port: u.port,
+                                            fingerprint: u.fingerprint,
+                                            max_connections: u.max_connections,
+                                            used_gb: u.used_gb,
+                                            used_req: u.used_req,
+                                            created_at: u.created_at,
+                                            is_active: u.is_active
+                                        })
+                                    });
+                                    if (res.ok) successCount++;
+                                } catch(err) {}
+                            }
+                        } else {
+                            try {
+                                const res = await fetch('/api/users', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({
+                                        username: u.username,
+                                        uuid: u.uuid,
+                                        limit_gb: u.limit_gb,
+                                        expiry_days: u.expiry_days,
+                                        limit_req: u.limit_req,
+                                        ips: u.ips,
+                                        tls: u.tls,
+                                        port: u.port,
+                                        fingerprint: u.fingerprint,
+                                        max_connections: u.max_connections,
+                                        used_gb: u.used_gb,
+                                        used_req: u.used_req,
+                                        created_at: u.created_at,
+                                        is_active: u.is_active
+                                    })
+                                });
+                                if (res.ok) successCount++;
+                            } catch(err) {}
+                        }
+                    }
+                    
+                    alert('✅ عملیات بازیابی با موفقیت انجام شد. ' + successCount + ' کاربر بازیابی شدند.');
+                    toggleSettingsModal(false);
+                    await loadUsers(true);
+                } catch(err) {
+                    alert('❌ خطا در خواندن یا پردازش فایل پشتیبان!');
+                } finally {
+                    if (importBtn) {
+                        importBtn.disabled = false;
+                        importBtn.innerText = '📥 بارگذاری بک‌آپ';
+                    }
+                    if (exportBtn) exportBtn.disabled = false;
+                    if (closeBtn) closeBtn.disabled = false;
+                    event.target.value = '';
+                }
+            };
+            reader.readAsText(file);
+        }
+
         async function changeAdminPassword() {
             const currentPwd = document.getElementById('change-pwd-current').value;
             const newPwd = document.getElementById('change-pwd-new').value;
