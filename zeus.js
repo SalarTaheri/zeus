@@ -159,7 +159,7 @@ const Router = {
 			return new Response(JSON.stringify({ success: true }), {
 				headers: {
 					"Content-Type": "application/json; charset=utf-8",
-					"Set-Cookie": "panel_session=" + hashed + "; Path=/; HttpOnly; Secure; SameSite=Lax",
+					"Set-Cookie": "panel_session=" + hashed + "; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=31536000",
 				},
 			});
 		}
@@ -171,7 +171,7 @@ const Router = {
 				return new Response(JSON.stringify({ success: true }), {
 					headers: {
 						"Content-Type": "application/json; charset=utf-8",
-						"Set-Cookie": "panel_session=" + storedHash + "; Path=/; HttpOnly; Secure; SameSite=Lax",
+						"Set-Cookie": "panel_session=" + storedHash + "; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=31536000",
 					},
 				});
 			}
@@ -431,7 +431,7 @@ const Router = {
 			return new Response(JSON.stringify({ success: true }), {
 				headers: {
 					"Content-Type": "application/json; charset=utf-8",
-					"Set-Cookie": "panel_session=" + newHash + "; Path=/; HttpOnly; Secure; SameSite=Lax",
+					"Set-Cookie": "panel_session=" + newHash + "; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=31536000",
 				},
 			});
 		}
@@ -2944,7 +2944,81 @@ login: `<!DOCTYPE html>
             </form>
         </div>
     </div>
+<div id="toast-container" class="fixed top-5 left-1/2 -translate-x-1/2 z-[9999] flex flex-col gap-2 pointer-events-none"></div>
+
+<div id="custom-confirm-modal" class="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm opacity-0 pointer-events-none transition-all duration-300 ease-out">
+    <div id="custom-confirm-card" class="w-full max-w-sm bg-white dark:bg-amoled-card border border-gray-200 dark:border-amoled-border rounded-3xl shadow-2xl overflow-hidden p-6 text-center transform transition-all scale-95 duration-300">
+        <h3 class="font-black text-xl text-gray-900 dark:text-white mb-3">تأیید عملیات</h3>
+        <p id="custom-confirm-message" class="text-sm text-gray-600 dark:text-gray-400 mb-6 leading-relaxed font-medium"></p>
+        <div class="flex gap-3">
+            <button id="custom-confirm-cancel" class="flex-1 py-3 bg-gray-100 hover:bg-gray-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-gray-700 dark:text-zinc-300 font-bold rounded-xl text-sm transition duration-200">انصراف</button>
+            <button id="custom-confirm-ok" class="flex-1 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-sm transition duration-200 shadow-lg">تأیید</button>
+        </div>
+    </div>
+</div>
     <script>
+		function showToast(message, type = 'success') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            const colors = type === 'error' 
+                ? 'bg-red-50 dark:bg-red-900/40 border-red-200 dark:border-red-800 text-red-600 dark:text-red-400' 
+                : 'bg-emerald-50 dark:bg-emerald-900/40 border-emerald-200 dark:border-emerald-800 text-emerald-600 dark:text-emerald-400';
+            
+            toast.className = 'px-4 py-3 border rounded-xl shadow-lg font-bold text-sm transform transition-all duration-300 -translate-y-full opacity-0 ' + colors;
+            toast.innerText = message;
+            
+            container.appendChild(toast);
+            
+            requestAnimationFrame(() => {
+                toast.classList.remove('-translate-y-full', 'opacity-0');
+            });
+            
+            setTimeout(() => {
+                toast.classList.add('-translate-y-full', 'opacity-0');
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+
+        function customConfirm(message) {
+            return new Promise((resolve) => {
+                const modal = document.getElementById('custom-confirm-modal');
+                const card = document.getElementById('custom-confirm-card');
+                const msgEl = document.getElementById('custom-confirm-message');
+                const btnOk = document.getElementById('custom-confirm-ok');
+                const btnCancel = document.getElementById('custom-confirm-cancel');
+
+                msgEl.innerText = message;
+
+                modal.classList.remove('opacity-0', 'pointer-events-none');
+                modal.classList.add('opacity-100', 'pointer-events-auto');
+                card.classList.remove('scale-95');
+                card.classList.add('scale-100');
+
+                const cleanup = () => {
+                    modal.classList.remove('opacity-100', 'pointer-events-auto');
+                    modal.classList.add('opacity-0', 'pointer-events-none');
+                    card.classList.remove('scale-100');
+                    card.classList.add('scale-95');
+                    btnOk.removeEventListener('click', onOk);
+                    btnCancel.removeEventListener('click', onCancel);
+                };
+
+                const onOk = () => { cleanup(); resolve(true); };
+                const onCancel = () => { cleanup(); resolve(false); };
+
+                btnOk.addEventListener('click', onOk);
+                btnCancel.addEventListener('click', onCancel);
+            });
+        }
+
+        window.alert = function(message) {
+            const msgStr = message ? message.toString() : '';
+            if (msgStr.includes('خطا') || msgStr.includes('⚠️') || msgStr.includes('❌')) {
+                showToast(msgStr, 'error');
+            } else {
+                showToast(msgStr, 'success');
+            }
+        };
         window.selectedUsernames = new Set();
         function toggleSelectAllUsers(el) {
             const checkboxes = document.querySelectorAll('input[name="select-user"]');
@@ -2994,7 +3068,7 @@ login: `<!DOCTYPE html>
         async function bulkDelete() {
             const usernames = Array.from(window.selectedUsernames);
             if (usernames.length === 0) return;
-            if (confirm('⚠️ آیا از حذف گروهی ' + usernames.length + ' کاربر انتخاب شده مطمئن هستید؟ این عمل غیرقابل بازگشت است.')) {
+            if (await customConfirm('⚠️ آیا از حذف گروهی ' + usernames.length + ' کاربر انتخاب شده مطمئن هستید؟ این عمل غیرقابل بازگشت است.')) {
                 const bar = document.getElementById('bulk-actions-bar');
                 const buttons = bar.querySelectorAll('button');
                 buttons.forEach(btn => btn.disabled = true);
@@ -3021,7 +3095,7 @@ login: `<!DOCTYPE html>
             const usernames = Array.from(window.selectedUsernames);
             if (usernames.length === 0) return;
             const actionText = targetActive === 1 ? 'فعال‌سازی' : 'غیرفعال‌سازی';
-            if (confirm('آیا از ' + actionText + ' گروهی ' + usernames.length + ' کاربر انتخاب شده مطمئن هستید؟')) {
+            if (await customConfirm('آیا از ' + actionText + ' گروهی ' + usernames.length + ' کاربر انتخاب شده مطمئن هستید؟')) {
                 const bar = document.getElementById('bulk-actions-bar');
                 const buttons = bar.querySelectorAll('button');
                 buttons.forEach(btn => btn.disabled = true);
@@ -3060,7 +3134,7 @@ login: `<!DOCTYPE html>
             if (actionType === 'volume') actionName = 'حجم مصرفی';
             else if (actionType === 'req') actionName = 'تعداد ریکوئست‌ها';
             else if (actionType === 'time') actionName = 'زمان اشتراک';
-            if (confirm('آیا از ریست کردن گروهی ' + actionName + ' برای ' + usernames.length + ' کاربر انتخاب شده مطمئن هستید؟')) {
+            if (await customConfirm('آیا از ریست کردن گروهی ' + actionName + ' برای ' + usernames.length + ' کاربر انتخاب شده مطمئن هستید؟')) {
                 const bar = document.getElementById('bulk-actions-bar');
                 const buttons = bar.querySelectorAll('button');
                 buttons.forEach(btn => btn.disabled = true);
@@ -3308,7 +3382,7 @@ login: `<!DOCTYPE html>
             }
         });
 		async function restartCore() {
-            if (!confirm('آیا از ری‌استارت هسته ورکر مطمئن هستید؟ این کار تمام اتصالات فعلی را قطع می‌کند.')) return;
+			if (!await customConfirm('آیا از ری‌استارت هسته ورکر مطمئن هستید؟ این کار تمام اتصالات فعلی را قطع می‌کند.')) return;
             
             const btn = document.querySelector('button[title="ری‌استارت هسته ورکر"]');
             if (btn) {
@@ -3322,7 +3396,14 @@ login: `<!DOCTYPE html>
                     headers: { 'Content-Type': 'application/json' }
                 });
                 const data = await res.json();
-                
+                if (res.status === 400 && data.error === "TOKEN_REQUIRED") {
+					toggleTokenModal(true);
+					if (btn) {
+						btn.disabled = false;
+						btn.classList.remove('animate-pulse');
+					}
+					return;
+				}
                 if (res.ok && data.success) {
                     alert('هسته ورکر با موفقیت ری‌استارت شد! پنل اکنون رفرش می‌شود.');
                     window.location.reload();
@@ -3688,13 +3769,13 @@ login: `<!DOCTYPE html>
                 updateBulkActionsBar();
             }
         }
-async function resetUserData(encodedUsername, actionType) {
-            const username = decodeURIComponent(encodedUsername);
-            let actionName = '';
-            if (actionType === 'volume') actionName = 'حجم';
-            else if (actionType === 'req') actionName = 'ریکوئست';
-            else if (actionType === 'time') actionName = 'زمان';
-            if (confirm('آیا از ریست کردن ' + actionName + ' کاربر ' + username + ' مطمئن هستید؟')) {
+		async function resetUserData(encodedUsername, actionType) {
+			const username = decodeURIComponent(encodedUsername);
+			let actionName = '';
+			if (actionType === 'volume') actionName = 'حجم';
+			else if (actionType === 'req') actionName = 'ریکوئست';
+			else if (actionType === 'time') actionName = 'زمان';
+			if (await customConfirm('آیا از ریست کردن ' + actionName + ' کاربر ' + username + ' مطمئن هستید؟')) {
                 try {
                     const response = await fetch('/api/users/' + encodeURIComponent(username), {
                         method: 'PUT',
@@ -3925,8 +4006,8 @@ function editUser(encodedUsername) {
     toggleModal(true);
 }
         async function deleteUser(encodedUsername) {
-            const username = decodeURIComponent(encodedUsername);
-            if (confirm('آیا از حذف کاربر ' + username + ' مطمئن هستید؟')) {
+			const username = decodeURIComponent(encodedUsername);
+			if (await customConfirm('آیا از حذف کاربر ' + username + ' مطمئن هستید؟')) {
                 try {
                     const response = await fetch('/api/users/' + encodeURIComponent(username), { method: 'DELETE' });
                     if (response.ok) {
@@ -4090,7 +4171,7 @@ function editUser(encodedUsername) {
                     const duplicates = validBackupUsers.filter(u => existingUsernames.has(u.username));
                     let overwrite = false;
                     if (duplicates.length > 0) {
-                        overwrite = confirm('⚠️ تعداد ' + duplicates.length + ' کاربر تکراری شناسایی شد. آیا می‌خواهید اطلاعات آن‌ها با فایل پشتیبان بازنویسی شود؟\\n(در صورت انتخاب لغو، کاربران تکراری نادیده گرفته می‌شوند)');
+                        overwrite = await customConfirm('⚠️ تعداد ' + duplicates.length + ' کاربر تکراری شناسایی شد. آیا می‌خواهید اطلاعات آن‌ها با فایل پشتیبان بازنویسی شود؟\\n(در صورت انتخاب لغو، کاربران تکراری نادیده گرفته می‌شوند)');
                     }
                     if (importBtn) importBtn.disabled = true;
                     if (exportBtn) exportBtn.disabled = true;
@@ -4212,14 +4293,14 @@ function editUser(encodedUsername) {
             }
         }
         async function logoutAdmin() {
-            if (confirm('⚠️ آیا می‌خواهید از پنل خارج شوید؟')) {
+			if (await customConfirm('⚠️ آیا می‌خواهید از پنل خارج شوید؟')) {
                 try {
                     await fetch('/api/logout', { method: 'POST' });
                 } catch (err) {}
                 window.location.reload();
             }
         }
-const CURRENT_VERSION = '1.5.6';
+const CURRENT_VERSION = '1.5.9';
 const UPDATE_FIX = "constsCURRENT_VERSION='d.d.d'";
 		async function checkForUpdates(isManual = false) {
             try {
