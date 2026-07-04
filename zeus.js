@@ -1589,6 +1589,7 @@ function createUpstreamQueue({ getWriter, releaseWriter, retryConnect, closeConn
 		if (draining || closed) return;
 		draining = true;
 		try {
+			let batchCount = 0;
 			for (;;) {
 				if (closed) break;
 				const item = bundle();
@@ -1615,6 +1616,11 @@ function createUpstreamQueue({ getWriter, releaseWriter, retryConnect, closeConn
 				} finally {
 					if (activeCompletions === completions) activeCompletions = null;
 				}
+				batchCount++;
+				if (batchCount >= 16) {
+					await new Promise((resolve) => setTimeout(resolve, 0));
+					batchCount = 0;
+				}
 			}
 		} catch (err) {
 			closed = true;
@@ -1624,7 +1630,7 @@ function createUpstreamQueue({ getWriter, releaseWriter, retryConnect, closeConn
 			} catch (_) {}
 		} finally {
 			draining = false;
-			if (!closed && head < chunks.length) queueMicrotask(drain);
+			if (!closed && head < chunks.length) setTimeout(drain, 0);
 			else resolveIdle();
 		}
 	};
@@ -1652,7 +1658,7 @@ function createUpstreamQueue({ getWriter, releaseWriter, retryConnect, closeConn
 		}
 		chunks.push({ chunk, allowRetry, completions });
 		queuedBytes = nextBytes;
-		if (!draining) queueMicrotask(drain);
+		if (!draining) setTimeout(drain, 0);
 		return waitForFlush ? completionPromise.then(() => true) : true;
 	};
 	return {
@@ -1677,7 +1683,7 @@ function createDownstreamSender(webSocket, headerData = null) {
 	let pendingBuffer = new Uint8Array(packetCap);
 	let pendingBytes = 0;
 	let flushTimer = null;
-	let microtaskQueued = false;
+	let taskQueued = false;
 	let generation = 0;
 	let scheduledGeneration = 0;
 	let waitRounds = 0;
@@ -1698,7 +1704,7 @@ function createDownstreamSender(webSocket, headerData = null) {
 		while (flushPromise) await flushPromise;
 		if (flushTimer) clearTimeout(flushTimer);
 		flushTimer = null;
-		microtaskQueued = false;
+		taskQueued = false;
 		if (!pendingBytes) return;
 		const output = pendingBuffer.subarray(0, pendingBytes).slice();
 		pendingBuffer = new Uint8Array(packetCap);
@@ -1710,11 +1716,11 @@ function createDownstreamSender(webSocket, headerData = null) {
 		return flushPromise;
 	};
 	const scheduleFlush = () => {
-		if (flushTimer || microtaskQueued) return;
-		microtaskQueued = true;
+		if (flushTimer || taskQueued) return;
+		taskQueued = true;
 		scheduledGeneration = generation;
-		queueMicrotask(() => {
-			microtaskQueued = false;
+		setTimeout(() => {
+			taskQueued = false;
 			if (!pendingBytes || flushTimer) return;
 			if (packetCap - pendingBytes < tailBytes) {
 				flush().catch(() => closeSocketQuietly(webSocket));
@@ -1738,7 +1744,7 @@ function createDownstreamSender(webSocket, headerData = null) {
 				},
 				Math.max(DOWNSTREAM_GRAIN_SILENT_MS, 1),
 			);
-		});
+		}, 0);
 	};
 	return {
 		async sendDirect(data) {
@@ -1775,8 +1781,11 @@ function createDownstreamSender(webSocket, headerData = null) {
 }
 async function waitForBackpressure(ws) {
 	if (typeof ws.bufferedAmount === "number") {
-		while (ws.bufferedAmount > 256 * 1024) {
-			await new Promise((r) => setTimeout(r, 100));
+		let maxAttempts = 150;
+		while (ws.bufferedAmount > 256 * 1024 && maxAttempts > 0) {
+			if (ws.readyState !== WebSocket.OPEN) break;
+			await new Promise((r) => setTimeout(r, 20));
+			maxAttempts--;
 		}
 	}
 }
