@@ -637,6 +637,10 @@
 ----------
 # دامنه های ایران پشت کلود
 01d.ir
+www.speedtest.net
+featureflags.netlify.com
+get.netlify.com
+static.cloudflareinsights.com
 09122108011.ir
 0nlysms.ir
 0seo.ir
