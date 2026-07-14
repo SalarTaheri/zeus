@@ -1,4 +1,4 @@
-name = "zeus-panel"
+name = "zeus"
 main = "zeus.js"
 compatibility_date = "2024-02-08"
 compatibility_flags = ["nodejs_compat"]
