@@ -3,9 +3,9 @@ const fs = require('fs');
 
 const cssPath = './src/output.css';
 const targetPath = './zeus.js';
-const commonHeadPattern = /const COMMON_HEAD = \`<script src="https?:\/\/cdn\.tailwindcss\.com"><\/script>[\s\S]*?<\/script>\`;/g;
+const commonHeadPattern = /const COMMON_HEAD = \`(<script src="https?:\/\/cdn\.tailwindcss\.com"><\/script>|<style>[\s\S]*?<\/style>)[\s\S]*?<\/script>\`;/g;
 
-const outputCss = fs.readFileSync(cssPath, 'utf8');
+const outputCss = fs.readFileSync(cssPath, 'utf8').replace(/\\/g, '\\\\');
 const targetContent = fs.readFileSync(targetPath, 'utf8');
 
 const styleContent = `<style>\n${outputCss}\n</style>`;
