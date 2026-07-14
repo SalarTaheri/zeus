@@ -1,0 +1,13 @@
+{
+  "name": "zeus-panel",
+  "private": true,
+  "scripts": {
+    "build:css": "npx tailwindcss -i ./src/input.css -o ./src/output.css --minify",
+    "embed-css": "node scripts/embed-css.js",
+    "build": "npm run build:css && npm run embed-css",
+    "deploy": "npm run build && wrangler deploy"
+  },
+  "devDependencies": {
+    "tailwindcss": "^3.4.0"
+  }
+}

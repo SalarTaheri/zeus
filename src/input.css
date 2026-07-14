@@ -1,0 +1,9 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer utilities {
+  .dark input[type="checkbox"] {
+    filter: invert(1) hue-rotate(180deg);
+  }
+}
